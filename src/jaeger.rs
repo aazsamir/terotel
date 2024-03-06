@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 
 // type Errors = Option<Vec<String>>;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Services {
     pub data: Vec<String>,
     pub total: i32,
@@ -14,7 +14,7 @@ pub struct Services {
     // pub errors: Errors,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Operations {
     pub data: Vec<String>,
     pub total: i32,
@@ -23,16 +23,16 @@ pub struct Operations {
     // pub errors: Errors,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Traces {
     pub data: Vec<Trace>,
     pub total: i32,
-    pub limit: i32,
-    pub offset: i32,
+    // pub limit: i32,
+    // pub offset: i32,
     // pub errors: Errors,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Trace {
     #[serde(rename = "traceID")]
     pub trace_id: String,
@@ -66,6 +66,7 @@ impl Display for Trace {
             s = format!("{}|{}ms", s, elapsed);
         }
         // look for first operation name
+        // TODO: get real first (by start_time) operation name
         if let Some(span) = self.spans.first() {
             s = format!("{}|{}", s, span.operation_name);
         }
@@ -77,16 +78,16 @@ impl Display for Trace {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Span {
     #[serde(rename = "traceID")]
     pub trace_id: String,
     #[serde(rename = "spanID")]
     pub span_id: String,
-    pub flags: i32,
+    pub flags: Option<i32>,
     #[serde(rename = "operationName")]
     pub operation_name: String,
-    // pub references: Vec<String>,
+    pub references: Option<Vec<Reference>>,
     #[serde(rename = "startTime")]
     pub start_time: i64,
     pub duration: i64,
@@ -97,7 +98,25 @@ pub struct Span {
     // pub warnings: Errors,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Reference {
+    #[serde(rename = "refType")]
+    pub ref_type: RefType,
+    #[serde(rename = "traceID")]
+    pub trace_id: String,
+    #[serde(rename = "spanID")]
+    pub span_id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum RefType {
+    #[serde(rename = "CHILD_OF")]
+    ChildOf,
+    #[serde(rename = "FOLLOWS_FROM")]
+    FollowsFrom,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Tag {
     pub key: String,
     #[serde(rename = "type")]
@@ -105,7 +124,7 @@ pub struct Tag {
     pub value: Value,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum TagValue {
     String(String),
     Int(i32),
@@ -113,7 +132,7 @@ pub enum TagValue {
     Float(f64),
 }
 
-// #[derive(Debug, Deserialize, Serialize)]
+// #[derive(Debug, Deserialize, Serialize, Clone)]
 // pub struct Process {
 //     pub serviceName: String,
 //     pub tags: Vec<Tag>,
