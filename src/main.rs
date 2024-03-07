@@ -3,7 +3,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
-use jaeger::{Jaeger, Operations, RefType, Services, Span, Trace, Traces};
+use jaeger::{Jaeger, Operations, Services, Span, Trace, Traces};
 use ratatui::{prelude::*, widgets::*};
 use std::{
     collections::HashMap,
@@ -244,7 +244,7 @@ impl State {
                             .data
                             .iter()
                             .find(|t| {
-                                t.to_string() == self.selected_trace.as_ref().unwrap().to_string()
+                                t.to_string() == *self.selected_trace.as_ref().unwrap()
                             })
                             .expect("On trace select, trace should be found.");
 
@@ -810,7 +810,7 @@ fn ui_span(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
         .as_ref()
         .unwrap()
         .iter()
-        .find(|s| s.to_string() == state.selected_span.as_ref().unwrap().to_string())
+        .find(|s| s.to_string() == *state.selected_span.as_ref().unwrap())
         .unwrap();
 
     let mut block = Block::default().title("Span Details").borders(Borders::ALL);
@@ -859,5 +859,5 @@ fn ui_span(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
         horizontal: 0,
         vertical: 1,
     };
-    frame.render_stateful_widget(scrollbar, layout[1].inner(&margin), &mut scrollbar_state);
+    frame.render_stateful_widget(scrollbar, layout[1].inner(margin), &mut scrollbar_state);
 }
