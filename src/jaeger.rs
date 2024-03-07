@@ -98,6 +98,17 @@ pub struct Span {
     // pub warnings: Errors,
 }
 
+impl Display for Span {
+    /// Returns a string representation of the span.
+    ///
+    /// `{operation_name}|{duration}ms|{span_id}`
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = format!("{}|{}ms|{}", self.operation_name, self.duration, self.span_id);
+        write!(f, "{}", s)
+    }
+
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Reference {
     #[serde(rename = "refType")]

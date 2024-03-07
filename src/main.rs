@@ -3,12 +3,10 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
-use jaeger::{Jaeger, Operations, RefType, Services, Trace, Traces};
+use jaeger::{Jaeger, Operations, RefType, Services, Span, Trace, Traces};
 use ratatui::{prelude::*, widgets::*};
 use std::{
-    collections::HashMap,
-    io::{self, stdout, Error},
-    rc::Rc,
+    collections::HashMap, fmt::Display, io::{self, stdout, Error}, rc::Rc
 };
 
 pub mod jaeger;
@@ -26,10 +24,13 @@ struct State {
     traces: Option<Traces>,
     traces_state: ListState,
     selected_trace: Option<String>,
+    spans: Option<Vec<Span>>,
+    spans_state: ListState,
+    selected_span: Option<String>,
+    span_text_scroll: u16,
     selected_window: Window,
     is_search_state: bool,
     search_input: String,
-    is_trace_state: bool,
     should_quit: bool,
 }
 
@@ -45,10 +46,13 @@ impl State {
             traces: None,
             traces_state: ListState::default(),
             selected_trace: None,
+            spans: None,
+            spans_state: ListState::default(),
+            selected_span: None,
             selected_window: Window::Services,
+            span_text_scroll: 0,
             is_search_state: false,
             search_input: String::new(),
-            is_trace_state: false,
             should_quit: false,
         }
     }
@@ -70,8 +74,12 @@ impl State {
     }
 
     fn handle_exit(&mut self) {
-        if self.is_trace_state {
-            self.is_trace_state = false;
+        if let Window::Spans = self.selected_window {
+            self.selected_window = Window::Traces;
+            // we exitted trace state, so we need to reset selected trace
+            self.selected_trace = None;
+        } else if let Window::Span = self.selected_window {
+            self.selected_window = Window::Traces;
             // we exitted trace state, so we need to reset selected trace
             self.selected_trace = None;
         } else {
@@ -98,6 +106,22 @@ impl State {
                     handle_list_scroll(&mut self.traces_state, traces.data.len(), dif)
                 }
             }
+            Window::Spans => {
+                if let Some(spans) = self.spans.as_ref() {
+                    handle_list_scroll(&mut self.spans_state, spans.len(), dif)
+                }
+            }
+            Window::Span => {
+                if self.selected_span.is_some() {
+                    if dif == -1 {
+                        if self.span_text_scroll > 0 {
+                            self.span_text_scroll -= 1;
+                        }
+                    } else {
+                        self.span_text_scroll += 1;
+                    }
+                }
+            }
         }
     }
 
@@ -109,90 +133,60 @@ impl State {
                 self.selected_window = Window::Operations;
             } else if selected == Window::Operations as usize {
                 self.selected_window = Window::Traces;
-            } else {
+            } else if selected == Window::Traces as usize {
                 self.selected_window = Window::Services;
+            } else if selected == Window::Spans as usize {
+                self.selected_window = Window::Span;
+            } else if selected == Window::Span as usize {
+                self.selected_window = Window::Spans;
             }
         } else if selected == Window::Services as usize {
             self.selected_window = Window::Traces;
         } else if selected == Window::Operations as usize {
             self.selected_window = Window::Services;
-        } else {
+        } else if selected == Window::Traces as usize{
             self.selected_window = Window::Operations;
+        } else if selected == Window::Spans as usize {
+            self.selected_window = Window::Span;
+        } else if selected == Window::Span as usize {
+            self.selected_window = Window::Spans;
         }
     }
 
     fn handle_select(&mut self, jaeger: &Jaeger) {
         match self.selected_window {
             Window::Services => {
-                if self.services.is_none() {
-                    {}
-                }
-
-                // hovered element, from scrolling
-                let hover = self.services_state.selected();
-
-                // if any is hovered
-                if let Some(hovered) = hover {
-                    // hovered is index, now we get the actual value
-                    let to_select = self.services.as_ref().unwrap().data[hovered].to_string();
-
-                    // if to select element is the same as hovered, unselect
-                    if self.selected_service.is_some()
-                        && self.selected_service.as_ref().unwrap() == &to_select
-                    {
-                        // unselect
-                        self.selected_service = None;
-                        // purge operations
-                        self.operations = None;
-                    } else {
-                        // otherwise, select it, and fetch operations of that service
-                        self.selected_service = Some(to_select);
-                        let operations = jaeger
-                            .get_operations(self.selected_service.as_ref().unwrap())
-                            .unwrap();
-
-                        // save in state
-                        self.operations = Some(operations);
-                        // change window to next one
-                        self.selected_window = Window::Operations;
-                        // unselect any selected operation, as they are not valid anymore
-                        self.selected_operation = None;
+                if let Some(services) = self.services.as_mut() {
+                    match handle_list_select(Some(services.data.clone()), &mut self.services_state, &mut self.selected_service) {
+                        ListSelectResult::Selected => {
+                            let operations = jaeger.get_operations(self.selected_service.as_ref().unwrap()).unwrap();
+                            self.operations = Some(operations);
+                            self.selected_window = Window::Operations;
+                            // todo: set traces_state and spans_state etc to new state?
+                            self.selected_operation = None;
+                            self.traces = None;
+                            self.selected_trace = None;
+                            self.spans = None;
+                            self.selected_span = None;
+                        }
+                        ListSelectResult::Unselected => {
+                            self.operations = None;
+                            self.selected_operation = None;
+                            self.traces = None;
+                            self.selected_trace = None;
+                            self.spans = None;
+                            self.selected_span = None;
+                        }
+                        ListSelectResult::None => {}
                     }
-
-                    // after all, we need to reset list state
                     self.operations_state = ListState::default();
                 }
             }
             Window::Operations => {
-                // ensure that there are any operations that we can select
-                if self.operations.is_none() {
-                    {}
-                }
+                match handle_list_select(self.operations.as_ref().map(|o| o.data.clone()), &mut self.operations_state, &mut self.selected_operation) {
+                    ListSelectResult::Selected => {
+                        let mut request = jaeger::TracesRequest::new(self.selected_service.as_ref().unwrap().clone());
 
-                // and that there is a selected service, to fetch traces
-                if self.selected_service.is_none() {
-                    {}
-                }
-
-                let hover = self.operations_state.selected();
-                if let Some(hovered) = hover {
-                    let to_select = self.operations.as_ref().unwrap().data[hovered].to_string();
-
-                    // unselect on same operation select
-                    if self.selected_operation.is_some()
-                        && self.selected_operation.as_ref().unwrap() == &to_select
-                    {
-                        self.selected_operation = None;
-                        self.traces = None;
-                    } else {
-                        // otherwise select operation
-                        self.selected_operation = Some(to_select);
-                        // fetch traces for given service
-                        let mut request = jaeger::TracesRequest::new(
-                            self.selected_service.as_ref().unwrap().clone(),
-                        );
-
-                        // if selected operation is not *, add it to request
                         if let Some(to_select) = self.selected_operation.as_ref() {
                             if !to_select.eq("*") {
                                 request.operation = Some(to_select.clone());
@@ -201,7 +195,6 @@ impl State {
 
                         let traces = jaeger.get_traces(&request);
 
-                        // todo: proper error handling
                         if traces.is_err() {
                             panic!("Error getting traces: {:?}", traces.err().unwrap());
                         }
@@ -209,31 +202,57 @@ impl State {
                         self.traces = Some(traces.unwrap());
                         self.selected_window = Window::Traces;
                         self.selected_trace = None;
+                        self.spans = None;
+                        self.selected_span = None;
                     }
-
-                    // after all, reset list state
-                    self.traces_state = ListState::default();
+                    ListSelectResult::Unselected => {
+                        self.traces = None;
+                        self.selected_trace = None;
+                        self.spans = None;
+                        self.selected_span = None;
+                    }
+                    ListSelectResult::None => {}
                 }
+                self.traces_state = ListState::default();
             }
             Window::Traces => {
-                if self.traces.is_none() {
-                    {}
-                }
+                match handle_list_select(self.traces.as_ref().map(|t| t.data.clone()), &mut self.traces_state, &mut self.selected_trace) {
+                    ListSelectResult::Selected => {
+                        let trace = self
+                            .traces
+                            .as_ref()
+                            .unwrap()
+                            .data
+                            .iter()
+                            .find(|t| {
+                                t.to_string() == self.selected_trace.as_ref().unwrap().to_string()
+                            })
+                            .expect("On trace select, trace should be found.");
 
-                let hover = self.traces_state.selected();
-                if let Some(hovered) = hover {
-                    let to_select = self.traces.as_ref().unwrap().data[hovered].to_string();
-
-                    if self.selected_trace.is_some()
-                        && self.selected_trace.as_ref().unwrap() == &to_select
-                    {
-                        self.selected_trace = None;
-                    } else {
-                        self.selected_trace = Some(to_select);
-                        self.is_trace_state = true;
+                        let mut spans = trace.spans.clone();
+                        spans.sort_by(|a, b| a.start_time.cmp(&b.start_time));
+                        self.spans = Some(spans);
+                        self.selected_window = Window::Spans;
+                        self.selected_span = None;
                     }
+                    ListSelectResult::Unselected => {
+                        self.spans = None;
+                        self.selected_span = None;
+                    }
+                    ListSelectResult::None => {}
                 }
             }
+            Window::Spans => {
+                match handle_list_select(self.spans.clone(), &mut self.spans_state, &mut self.selected_span) {
+                    ListSelectResult::None => {}
+                    ListSelectResult::Selected => {
+                        self.selected_window = Window::Span;
+                        self.span_text_scroll = 0;
+                    }
+                    ListSelectResult::Unselected => {}
+                }
+            }
+            Window::Span => {}
         }
     }
 
@@ -298,6 +317,19 @@ impl State {
                         self.traces_state = ListState::default();
                     }
                 }
+                Window::Spans => {
+                    if let Some(spans) = &mut self.spans {
+                        let search = self.search_input.clone();
+                        let filtered_spans: Vec<Span> = spans
+                            .clone()
+                            .into_iter()
+                            .filter(|s| s.operation_name.contains(&search))
+                            .collect();
+                        self.spans = Some(filtered_spans);
+                        self.spans_state = ListState::default();
+                    }
+                }
+                Window::Span => {}
             }
             self.is_search_state = false;
         }
@@ -309,6 +341,8 @@ enum Window {
     Services = 0,
     Operations = 1,
     Traces = 2,
+    Spans = 3,
+    Span = 4,
 }
 
 fn main() -> io::Result<()> {
@@ -357,6 +391,33 @@ fn handle_list_scroll(list_state: &mut ListState, max: usize, dif: i32) {
     } else {
         list_state.select(Some(0));
     }
+}
+
+fn handle_list_select<T: Display>(list_option: Option<Vec<T>>, list_state: &mut ListState, selected: &mut Option<String>) -> ListSelectResult
+where T: Display + Clone {
+    if let Some(list) = list_option {
+        let hover = list_state.selected();
+
+        if let Some(hovered) = hover {
+            let to_select = list[hovered].to_string();
+
+            return if selected.is_some() && selected.as_ref().unwrap() == &to_select {
+                *selected = None;
+                ListSelectResult::Unselected
+            } else {
+                *selected = Some(to_select);
+                ListSelectResult::Selected
+            }
+        }
+    }
+
+    ListSelectResult::None
+}
+
+enum ListSelectResult {
+    None,
+    Selected,
+    Unselected,
 }
 
 #[derive(Debug, PartialEq)]
@@ -431,7 +492,9 @@ fn is_keycode_pressed(key: KeyEvent, key_code: KeyCode) -> bool {
 }
 
 fn ui(frame: &mut Frame, state: &State) {
-    if state.is_trace_state {
+    if let Window::Spans = state.selected_window {
+        ui_trace(frame, state);
+    } else if let Window::Span = state.selected_window {
         ui_trace(frame, state);
     } else {
         ui_main(frame, state)
@@ -634,38 +697,34 @@ fn ui_trace(frame: &mut Frame, state: &State) {
     .split(main_layout[1]);
 
     ui_spans(frame, &inner_layout, state);
+    ui_span(frame, &inner_layout, state);
 }
 
 fn ui_spans(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
-    let trace: Trace;
-
-    if let Some(traces) = &state.traces {
-        let selected = state.traces_state.selected().unwrap();
-        trace = traces.data[selected].clone();
-    } else {
+    if state.spans.is_none() {
         return;
     }
 
     let mut lines: Vec<String> = vec![];
-    let mut spans = trace.spans.clone();
-    let parents = trace.spans.clone();
+    let spans = state.spans.clone().unwrap();
+    let parents = state.spans.clone().unwrap();
 
-    // todo: don't sort here, as it happens every while loop
-    spans.sort_by(|a, b| a.start_time.cmp(&b.start_time));
+    // todo: don't do that here, as it happens every while loop
 
     let mut indentation = 0;
     let mut indetations: HashMap<String, i32> = HashMap::new();
 
     for span in spans {
         let mut line_text = format!("{}|{}", span.span_id, span.operation_name);
+        let span_string = span.to_string();
 
         // if span have references
         if let Some(reference) = span.references.unwrap().first() {
             let parent_span_id = reference.span_id.clone();
 
             // otherwise, figure out indendation
-            for span in &parents {
-                if span.span_id == parent_span_id {
+            for parent in &parents {
+                if parent.span_id == parent_span_id {
                     // if parent was already indented, use that indentation
                     if indetations.contains_key(parent_span_id.as_str()) {
                         indentation = *indetations.get(parent_span_id.as_str()).unwrap();
@@ -683,16 +742,90 @@ fn ui_spans(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
             }
         }
 
+        if let Some(selected_span) = &state.selected_span {
+            if span_string.eq(selected_span) {
+                line_text = format!("*{}*", line_text);
+            }
+        }
+
         lines.push(line_text);
     }
 
-    let block = Block::default().title("Spans").borders(Borders::ALL);
+    let mut block = Block::default().title("Spans").borders(Borders::ALL);
 
-    let traces = List::new(lines)
+    if let Window::Spans = state.selected_window {
+        block = Block::default().title("*Spans*").borders(Borders::ALL);
+    };
+
+    let spans = List::new(lines)
         .block(block)
         .style(Style::default().fg(Color::White))
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol(" ");
 
-    frame.render_widget(traces, layout[0]);
+    frame.render_stateful_widget(spans, layout[0], &mut state.spans_state.clone());
+}
+
+fn ui_span(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
+    if state.spans.is_none() {
+        return;
+    }
+
+    if state.selected_span.is_none() {
+        return;
+    }
+
+    // find selected span
+    let selected_span = state
+        .spans
+        .as_ref()
+        .unwrap()
+        .iter()
+        .find(|s| s.to_string() == state.selected_span.as_ref().unwrap().to_string())
+        .unwrap();
+
+    let mut block = Block::default().title("Span Details").borders(Borders::ALL);
+
+    if let Window::Spans = state.selected_window {
+        block = Block::default().title("*Span Details*").borders(Borders::ALL);
+    };
+
+    let mut lines: Vec<String> = vec![];
+    lines.push(format!("Operation Name: {}", selected_span.operation_name));
+    lines.push(format!("Trace ID: {}", selected_span.trace_id));
+    lines.push(format!("Span ID: {}", selected_span.span_id));
+    lines.push(format!("Start Time: {}", selected_span.start_time));
+    lines.push(format!("Duration: {}", selected_span.duration));
+    lines.push(format!("Process ID: {}", selected_span.process_id));
+    lines.push("Tags:".to_string());
+
+    for tag in &selected_span.tags {
+        lines.push(format!("  {} - {}", tag.key, tag.value));
+    }
+
+    let mut paragraph_items = vec![];
+    for line in lines {
+        paragraph_items.push(Line::from(line));
+    }
+
+    let paragraph_items_len = paragraph_items.len();
+
+    let paragraph = Paragraph::new(paragraph_items)
+        .style(Style::default().fg(Color::White))
+        .alignment(Alignment::Left)
+        .scroll((state.span_text_scroll, 0))
+        .block(block);
+
+    let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(Some("▲"))
+        .end_symbol(Some("▼"));
+
+    let mut scrollbar_state = ScrollbarState::new(paragraph_items_len).position(state.span_text_scroll as usize);
+
+    frame.render_widget(paragraph, layout[1]);
+    let margin = &Margin {
+        horizontal: 0,
+        vertical: 1,
+    };
+    frame.render_stateful_widget(scrollbar, layout[1].inner(&margin), &mut scrollbar_state);
 }
