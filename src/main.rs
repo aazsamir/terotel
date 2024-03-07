@@ -6,7 +6,10 @@ use crossterm::{
 use jaeger::{Jaeger, Operations, RefType, Services, Span, Trace, Traces};
 use ratatui::{prelude::*, widgets::*};
 use std::{
-    collections::HashMap, fmt::Display, io::{self, stdout, Error}, rc::Rc
+    collections::HashMap,
+    fmt::Display,
+    io::{self, stdout, Error},
+    rc::Rc,
 };
 
 pub mod jaeger;
@@ -144,7 +147,7 @@ impl State {
             self.selected_window = Window::Traces;
         } else if selected == Window::Operations as usize {
             self.selected_window = Window::Services;
-        } else if selected == Window::Traces as usize{
+        } else if selected == Window::Traces as usize {
             self.selected_window = Window::Operations;
         } else if selected == Window::Spans as usize {
             self.selected_window = Window::Span;
@@ -157,9 +160,15 @@ impl State {
         match self.selected_window {
             Window::Services => {
                 if let Some(services) = self.services.as_mut() {
-                    match handle_list_select(Some(services.data.clone()), &mut self.services_state, &mut self.selected_service) {
+                    match handle_list_select(
+                        Some(services.data.clone()),
+                        &mut self.services_state,
+                        &mut self.selected_service,
+                    ) {
                         ListSelectResult::Selected => {
-                            let operations = jaeger.get_operations(self.selected_service.as_ref().unwrap()).unwrap();
+                            let operations = jaeger
+                                .get_operations(self.selected_service.as_ref().unwrap())
+                                .unwrap();
                             self.operations = Some(operations);
                             self.selected_window = Window::Operations;
                             // todo: set traces_state and spans_state etc to new state?
@@ -183,9 +192,15 @@ impl State {
                 }
             }
             Window::Operations => {
-                match handle_list_select(self.operations.as_ref().map(|o| o.data.clone()), &mut self.operations_state, &mut self.selected_operation) {
+                match handle_list_select(
+                    self.operations.as_ref().map(|o| o.data.clone()),
+                    &mut self.operations_state,
+                    &mut self.selected_operation,
+                ) {
                     ListSelectResult::Selected => {
-                        let mut request = jaeger::TracesRequest::new(self.selected_service.as_ref().unwrap().clone());
+                        let mut request = jaeger::TracesRequest::new(
+                            self.selected_service.as_ref().unwrap().clone(),
+                        );
 
                         if let Some(to_select) = self.selected_operation.as_ref() {
                             if !to_select.eq("*") {
@@ -216,7 +231,11 @@ impl State {
                 self.traces_state = ListState::default();
             }
             Window::Traces => {
-                match handle_list_select(self.traces.as_ref().map(|t| t.data.clone()), &mut self.traces_state, &mut self.selected_trace) {
+                match handle_list_select(
+                    self.traces.as_ref().map(|t| t.data.clone()),
+                    &mut self.traces_state,
+                    &mut self.selected_trace,
+                ) {
                     ListSelectResult::Selected => {
                         let trace = self
                             .traces
@@ -243,7 +262,11 @@ impl State {
                 }
             }
             Window::Spans => {
-                match handle_list_select(self.spans.clone(), &mut self.spans_state, &mut self.selected_span) {
+                match handle_list_select(
+                    self.spans.clone(),
+                    &mut self.spans_state,
+                    &mut self.selected_span,
+                ) {
                     ListSelectResult::None => {}
                     ListSelectResult::Selected => {
                         self.selected_window = Window::Span;
@@ -393,8 +416,14 @@ fn handle_list_scroll(list_state: &mut ListState, max: usize, dif: i32) {
     }
 }
 
-fn handle_list_select<T: Display>(list_option: Option<Vec<T>>, list_state: &mut ListState, selected: &mut Option<String>) -> ListSelectResult
-where T: Display + Clone {
+fn handle_list_select<T: Display>(
+    list_option: Option<Vec<T>>,
+    list_state: &mut ListState,
+    selected: &mut Option<String>,
+) -> ListSelectResult
+where
+    T: Display + Clone,
+{
     if let Some(list) = list_option {
         let hover = list_state.selected();
 
@@ -407,7 +436,7 @@ where T: Display + Clone {
             } else {
                 *selected = Some(to_select);
                 ListSelectResult::Selected
-            }
+            };
         }
     }
 
@@ -787,7 +816,9 @@ fn ui_span(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
     let mut block = Block::default().title("Span Details").borders(Borders::ALL);
 
     if let Window::Spans = state.selected_window {
-        block = Block::default().title("*Span Details*").borders(Borders::ALL);
+        block = Block::default()
+            .title("*Span Details*")
+            .borders(Borders::ALL);
     };
 
     let mut lines: Vec<String> = vec![];
@@ -820,7 +851,8 @@ fn ui_span(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
         .begin_symbol(Some("▲"))
         .end_symbol(Some("▼"));
 
-    let mut scrollbar_state = ScrollbarState::new(paragraph_items_len).position(state.span_text_scroll as usize);
+    let mut scrollbar_state =
+        ScrollbarState::new(paragraph_items_len).position(state.span_text_scroll as usize);
 
     frame.render_widget(paragraph, layout[1]);
     let margin = &Margin {
