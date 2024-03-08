@@ -1,0 +1,18 @@
+{
+    "name": "samir/pushtest",
+    "autoload": {
+        "psr-4": {
+            "Samir\\Pushtest\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "AZSamir",
+            "email": "sutikkukun@gmail.com"
+        }
+    ],
+    "require": {
+        "opentracing/opentracing": "^1.0",
+        "jonahgeorge/jaeger-client-php": "^1.4"
+    }
+}
