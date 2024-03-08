@@ -744,7 +744,7 @@ fn ui_spans(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
     let mut indetations: HashMap<String, i32> = HashMap::new();
 
     for span in spans {
-        let mut line_text = format!("{}|{}", span.span_id, span.operation_name);
+        let mut line_text = format!("{}|{}ms", span.operation_name, span.duration / 1000);
         let span_string = span.to_string();
 
         // if span have references
