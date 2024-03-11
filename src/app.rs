@@ -1,8 +1,6 @@
-use crossterm::{
-    event::{self, Event, KeyCode, KeyEvent},
-};
+use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use jaeger::{Jaeger, Operations, Services, Span, Trace, Traces};
-use ratatui::{widgets::*};
+use ratatui::widgets::*;
 use std::{
     fmt::Display,
     io::{self},
