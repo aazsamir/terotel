@@ -64,13 +64,19 @@ pub fn ui_topbar(frame: &mut Frame, layout: &Rc<[Rect]>, _state: &State) {
 }
 
 pub fn ui_statusbar(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
-    let text = if state.is_search_state {
+    let mut text = if state.is_search_state {
         let mut search_input = "(ESC?)> ".to_string();
         search_input.push_str(&state.search_input);
         search_input
     } else {
         "q - Quit | hjkl - Move | e - Select | / - Search".to_string()
     };
+
+    if state.is_debug {
+        text.push_str(" | DEBUG: ");
+        text.push_str(&state.debug_text);
+    }
+
     let paragraph = Paragraph::new(text);
     frame.render_widget(paragraph, layout[2]);
 }

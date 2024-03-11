@@ -29,6 +29,8 @@ pub struct State {
     pub is_search_state: bool,
     pub search_input: String,
     pub should_quit: bool,
+    pub is_debug: bool,
+    pub debug_text: String,
 }
 
 impl Default for State {
@@ -57,10 +59,18 @@ impl State {
             is_search_state: false,
             search_input: String::new(),
             should_quit: false,
+            is_debug: false,
+            debug_text: String::new(),
         }
     }
 
     pub fn handle_operation(mut self, operation: &Operation, jaeger: &Jaeger) -> Self {
+        if let Operation::Nothing = operation {
+            ()
+        } else {
+            self.set_debug_text(format!("op: {:?}", operation));
+        }
+
         match operation {
             Operation::Exit => self.handle_exit(),
             Operation::MoveDown => self.handle_move_vertical(true),
@@ -72,6 +82,7 @@ impl State {
             Operation::Search => self.handle_search(),
             Operation::SearchInput(c) => self.handle_search_input(c),
             Operation::SearchEnter => self.handle_search_enter(),
+            Operation::ToggleDebug => self.is_debug = !self.is_debug,
         };
         self
     }
@@ -355,6 +366,10 @@ impl State {
             self.is_search_state = false;
         }
     }
+
+    fn set_debug_text(&mut self, text: String) {
+        self.debug_text = text;
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -393,21 +408,26 @@ pub fn handle_list_select<T: Display>(
 where
     T: Display + Clone,
 {
+    // if the list to iterate over is not empty
     if let Some(list) = list_option {
+        // hovered element
         let hover = list_state.selected();
 
+        // if anything is hovered
         if let Some(hovered) = hover {
             let to_select = list[hovered].to_string();
 
+            // if hovered element is selected, unselect
             if let Some(sel) = selected {
                 if sel == &to_select {
                     *selected = None;
                     return ListSelectResult::Unselected;
                 }
-            } else {
-                *selected = Some(to_select);
-                return ListSelectResult::Selected;
             }
+
+            // otherwise, select hovered element
+            *selected = Some(to_select);
+            return ListSelectResult::Selected;
         }
     }
 
@@ -432,6 +452,7 @@ pub enum Operation {
     Search,
     SearchInput(char),
     SearchEnter,
+    ToggleDebug,
 }
 
 pub fn handle_events(state: &State) -> io::Result<Operation> {
@@ -450,6 +471,9 @@ pub fn handle_events(state: &State) -> io::Result<Operation> {
                 if is_keycode_pressed(key, KeyCode::Enter) {
                     return Ok(Operation::SearchEnter);
                 }
+            }
+            if is_char_pressed(key, '\\') {
+                return Ok(Operation::ToggleDebug);
             }
             if is_char_pressed(key, 'q') {
                 return Ok(Operation::Exit);
