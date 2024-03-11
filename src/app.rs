@@ -167,8 +167,8 @@ impl State {
                     ) {
                         ListSelectResult::Selected => {
                             let operations = jaeger
-                                .get_operations(self.selected_service.as_ref().unwrap())
-                                .unwrap();
+                                .get_operations(self.selected_service.as_ref().expect("Service should be selected"))
+                                .expect("Operations should be fetched.");
                             self.operations = Some(operations);
                             self.selected_window = Window::Operations;
                             // todo: set traces_state and spans_state etc to new state?
@@ -199,7 +199,7 @@ impl State {
                 ) {
                     ListSelectResult::Selected => {
                         let mut request = jaeger::TracesRequest::new(
-                            self.selected_service.as_ref().unwrap().clone(),
+                            self.selected_service.as_ref().expect("Service should be selected").clone(),
                         );
 
                         if let Some(to_select) = self.selected_operation.as_ref() {
@@ -210,15 +210,15 @@ impl State {
 
                         let traces = jaeger.get_traces(&request);
 
-                        if traces.is_err() {
-                            panic!("Error getting traces: {:?}", traces.err().unwrap());
+                        if let Ok(traces) = traces {
+                            self.traces = Some(traces);
+                            self.selected_window = Window::Traces;
+                            self.selected_trace = None;
+                            self.spans = None;
+                            self.selected_span = None;
+                        } else if let Err(e) = traces {
+                            panic!("Error getting traces: {:?}", e);
                         }
-
-                        self.traces = Some(traces.unwrap());
-                        self.selected_window = Window::Traces;
-                        self.selected_trace = None;
-                        self.spans = None;
-                        self.selected_span = None;
                     }
                     ListSelectResult::Unselected => {
                         self.traces = None;
@@ -240,10 +240,10 @@ impl State {
                         let trace = self
                             .traces
                             .as_ref()
-                            .unwrap()
+                            .expect("Traces to be correctly fetched")
                             .data
                             .iter()
-                            .find(|t| t.to_string() == *self.selected_trace.as_ref().unwrap())
+                            .find(|t| t.to_string() == *self.selected_trace.as_ref().expect("Trace should be selected"))
                             .expect("On trace select, trace should be found.");
 
                         let mut spans = trace.spans.clone();
@@ -399,13 +399,15 @@ where
         if let Some(hovered) = hover {
             let to_select = list[hovered].to_string();
 
-            return if selected.is_some() && selected.as_ref().unwrap() == &to_select {
-                *selected = None;
-                ListSelectResult::Unselected
+            if let Some(sel) = selected {
+                if sel == &to_select {
+                    *selected = None;
+                    return ListSelectResult::Unselected;
+                }
             } else {
                 *selected = Some(to_select);
-                ListSelectResult::Selected
-            };
+                return ListSelectResult::Selected;
+            }
         }
     }
 
@@ -434,7 +436,7 @@ pub enum Operation {
 
 pub fn handle_events(state: &State) -> io::Result<Operation> {
     if event::poll(std::time::Duration::from_millis(50))? {
-        if let Event::Key(key) = event::read().unwrap() {
+        if let Event::Key(key) = event::read().expect("Event from crossterm") {
             if state.is_search_state {
                 if is_keycode_pressed(key, KeyCode::Esc) {
                     return Ok(Operation::Search);
