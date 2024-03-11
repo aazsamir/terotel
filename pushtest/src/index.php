@@ -50,6 +50,11 @@ class App
             $span = $tracer->startActiveSpan('sub', []);
             $span->close();
         }
+        {
+            $span = $tracer->startActiveSpan('longtext', []);
+            $span->getSpan()->setTag('app.longtext', str_repeat('a', 10000));
+            $span->close();
+        }
         $scope->close();
 
         $tracer->flush();
