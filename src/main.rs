@@ -6,9 +6,7 @@ use crossterm::{
 use jaeger::Jaeger;
 use ratatui::prelude::*;
 use ui::ui;
-use std::{
-    io::{self, stdout, Error},
-};
+use std::io::{self, stdout, Error};
 
 pub mod jaeger;
 pub mod app;
