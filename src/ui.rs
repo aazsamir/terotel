@@ -41,20 +41,20 @@ pub fn ui_main(frame: &mut Frame, state: &State) {
     .split(main_layout[1]);
     frame.render_widget(
         Block::default().borders(Borders::ALL).title("Services"), // "default" title, if no services found
-        inner_layout[Window::Services as usize],
+        inner_layout[0],
     );
     frame.render_widget(
         Block::default().borders(Borders::ALL).title("Operations"),
-        inner_layout[Window::Operations as usize],
+        inner_layout[1],
     );
     frame.render_widget(
         Block::default().borders(Borders::ALL).title("Traces"),
-        inner_layout[Window::Traces as usize],
+        inner_layout[2],
     );
 
-    ui_services(frame, &inner_layout, state);
-    ui_operations(frame, &inner_layout, state);
-    ui_traces(frame, &inner_layout, state);
+    ui_services(frame, &inner_layout[0], state);
+    ui_operations(frame, &inner_layout[1], state);
+    ui_traces(frame, &inner_layout[2], state);
 }
 
 pub fn ui_topbar(frame: &mut Frame, layout: &Rc<[Rect]>, _state: &State) {
@@ -75,7 +75,7 @@ pub fn ui_statusbar(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
     frame.render_widget(paragraph, layout[2]);
 }
 
-pub fn ui_services(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
+pub fn ui_services(frame: &mut Frame, layout: &Rect, state: &State) {
     if state.services.is_none() {
         return;
     }
@@ -112,10 +112,10 @@ pub fn ui_services(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
     .highlight_symbol(" ");
 
     let mut state = state.services_state.clone();
-    frame.render_stateful_widget(services, layout[0], &mut state);
+    frame.render_stateful_widget(services, *layout, &mut state);
 }
 
-pub fn ui_operations(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
+pub fn ui_operations(frame: &mut Frame, layout: &Rect, state: &State) {
     if state.operations.is_none() {
         return;
     }
@@ -151,10 +151,10 @@ pub fn ui_operations(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
     .highlight_symbol(" ");
 
     let mut state = state.operations_state.clone();
-    frame.render_stateful_widget(operations, layout[1], &mut state);
+    frame.render_stateful_widget(operations, *layout, &mut state);
 }
 
-pub fn ui_traces(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
+pub fn ui_traces(frame: &mut Frame, layout: &Rect, state: &State) {
     if state.traces.is_none() {
         return;
     }
@@ -190,7 +190,7 @@ pub fn ui_traces(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
     .highlight_symbol(" ");
 
     let mut state = state.traces_state.clone();
-    frame.render_stateful_widget(traces, layout[2], &mut state);
+    frame.render_stateful_widget(traces, *layout, &mut state);
 }
 
 pub fn ui_trace(frame: &mut Frame, state: &State) {
@@ -212,11 +212,11 @@ pub fn ui_trace(frame: &mut Frame, state: &State) {
     )
     .split(main_layout[1]);
 
-    ui_spans(frame, &inner_layout, state);
-    ui_span(frame, &inner_layout, state);
+    ui_spans(frame, &inner_layout[0], state);
+    ui_span(frame, &inner_layout[1], state);
 }
 
-pub fn ui_spans(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
+pub fn ui_spans(frame: &mut Frame, layout: &Rect, state: &State) {
     if state.spans.is_none() {
         return;
     }
@@ -279,10 +279,10 @@ pub fn ui_spans(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
         .highlight_style(Style::default().add_modifier(Modifier::BOLD))
         .highlight_symbol(" ");
 
-    frame.render_stateful_widget(spans, layout[0], &mut state.spans_state.clone());
+    frame.render_stateful_widget(spans, *layout, &mut state.spans_state.clone());
 }
 
-pub fn ui_span(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
+pub fn ui_span(frame: &mut Frame, layout: &Rect, state: &State) {
     if state.spans.is_none() {
         return;
     }
@@ -342,10 +342,10 @@ pub fn ui_span(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
     let mut scrollbar_state =
         ScrollbarState::new(paragraph_items_len).position(state.span_text_scroll as usize);
 
-    frame.render_widget(paragraph, layout[1]);
+    frame.render_widget(paragraph, *layout);
     let margin = &Margin {
         horizontal: 0,
         vertical: 1,
     };
-    frame.render_stateful_widget(scrollbar, layout[1].inner(margin), &mut scrollbar_state);
+    frame.render_stateful_widget(scrollbar, layout.inner(margin), &mut scrollbar_state);
 }
