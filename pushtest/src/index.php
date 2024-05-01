@@ -27,14 +27,15 @@ class App
                     'reporting_port' => '6831',
                 ],
             ],
-            'phppush',
+            // $this->getRandomString(10),
+            'pushtest',
             new TextLogger()
         );
         $config->initializeTracer();
         
         $tracer = GlobalTracer::get();
         
-        $scope = $tracer->startActiveSpan('main', []);
+        $scope = $tracer->startActiveSpan($this->getRandomString(10), []);
         {
             $span = $tracer->startActiveSpan('sub', []);
             $span->close();
@@ -58,6 +59,19 @@ class App
         $scope->close();
 
         $tracer->flush();
+    }
+
+    private function getRandomString(int $n)
+    {
+        $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $randomString = '';
+
+        for ($i = 0; $i < $n; $i++) {
+            $index = rand(0, strlen($characters) - 1);
+            $randomString .= $characters[$index];
+        }
+
+        return $randomString;
     }
 }
 

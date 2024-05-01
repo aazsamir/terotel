@@ -157,8 +157,8 @@ pub struct TracesRequest {
     pub limit: Option<i32>,
     pub start: Option<i64>,
     pub end: Option<i64>, // todo: duration?
-    pub min_duration: Option<i64>,
-    pub max_duration: Option<i64>,
+    pub min_duration: Option<u64>,
+    pub max_duration: Option<u64>,
     pub lookback: Option<Lookback>,
 }
 
@@ -191,18 +191,23 @@ impl TracesRequest {
         self
     }
 
-    pub fn min_duration(mut self, min_duration: i64) -> TracesRequest {
+    pub fn min_duration(mut self, min_duration: u64) -> TracesRequest {
         self.min_duration = Some(min_duration);
         self
     }
 
-    pub fn max_duration(mut self, max_duration: i64) -> TracesRequest {
+    pub fn max_duration(mut self, max_duration: u64) -> TracesRequest {
         self.max_duration = Some(max_duration);
         self
     }
 
     pub fn lookback(mut self, lookback: Lookback) -> TracesRequest {
         self.lookback = Some(lookback);
+        self
+    }
+
+    pub fn operation(mut self, operation: String) -> TracesRequest {
+        self.operation = Some(operation);
         self
     }
 }
@@ -279,11 +284,11 @@ impl Jaeger {
         }
 
         if let Some(min_duration) = request.min_duration {
-            url = format!("{}&minDuration={}", url, min_duration);
+            url = format!("{}&minDuration={}ms", url, min_duration);
         }
 
         if let Some(max_duration) = request.max_duration {
-            url = format!("{}&maxDuration={}", url, max_duration);
+            url = format!("{}&maxDuration={}ms", url, max_duration);
         }
 
         if let Some(lookback) = &request.lookback {

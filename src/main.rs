@@ -5,16 +5,17 @@ use crossterm::{
 };
 use jaeger::Jaeger;
 use ratatui::prelude::*;
-use ui::ui;
 use std::io::{self, stdout, Error};
+use ui::ui;
 
-pub mod jaeger;
 pub mod app;
+pub mod jaeger;
 pub mod ui;
 
 fn main() -> io::Result<()> {
     let jaeger = Jaeger::new("http://localhost:16686");
     let mut state = app::State::new();
+    // todo: there may be nothing to unwrap here
     let services = jaeger.get_services().unwrap();
     state.services = Some(services);
     enable_raw_mode()?;
@@ -23,17 +24,26 @@ fn main() -> io::Result<()> {
     let mut operation: Result<Operation, Error>;
     let mut should_quit = false;
 
+    // first draw
+    terminal.draw(|f| {
+        ui(f, &state);
+    })?;
+
     while !should_quit {
-        terminal.draw(|f| {
-            ui(f, &state);
-        })?;
         operation = handle_events(&state);
 
         if let Ok(op) = operation {
             state = state.handle_operation(&op, &jaeger);
-        }
 
-        should_quit = state.should_quit;
+            // draw only if there was any operation
+            if op != Operation::Nothing {
+                terminal.draw(|f| {
+                    ui(f, &state);
+                })?;
+            }
+
+            should_quit = state.should_quit;
+        }
     }
 
     disable_raw_mode()?;

@@ -21,6 +21,11 @@ pub struct State {
     pub traces: Option<Traces>,
     pub traces_state: ListState,
     pub selected_trace: Option<String>,
+    // not used for now, probably should be renamed
+    pub traces_page: u16,
+    pub traces_limit: u16,
+    pub min_duration: u64,
+    pub max_duration: u64,
     pub spans: Option<Vec<Span>>,
     pub spans_state: ListState,
     pub selected_span: Option<String>,
@@ -50,6 +55,10 @@ impl State {
             selected_operation: None,
             traces: None,
             traces_state: ListState::default(),
+            traces_page: 0,
+            traces_limit: 10,
+            min_duration: 0,
+            max_duration: 0,
             selected_trace: None,
             spans: None,
             spans_state: ListState::default(),
@@ -83,6 +92,32 @@ impl State {
             Operation::SearchInput(c) => self.handle_search_input(c),
             Operation::SearchEnter => self.handle_search_enter(),
             Operation::ToggleDebug => self.is_debug = !self.is_debug,
+            Operation::NextPage => {
+                if let Window::Traces = self.selected_window {
+                    self.traces_page += 1;
+                    self.fetch_traces(jaeger);
+                }
+            }
+            Operation::PreviousPage => {
+                if let Window::Traces = self.selected_window {
+                    if self.traces_page > 0 {
+                        self.traces_page -= 1;
+                        self.fetch_traces(jaeger);
+                    }
+                }
+            }
+            Operation::AddMinDuration => {
+                self.min_duration = self.handle_duration(self.min_duration, true);
+            }
+            Operation::AddMaxDuration => {
+                self.max_duration = self.handle_duration(self.max_duration, true);
+            }
+            Operation::SubMinDuration => {
+                self.min_duration = self.handle_duration(self.min_duration, false);
+            }
+            Operation::SubMaxDuration => {
+                self.max_duration = self.handle_duration(self.max_duration, false);
+            }
         };
         self
     }
@@ -178,7 +213,11 @@ impl State {
                     ) {
                         ListSelectResult::Selected => {
                             let operations = jaeger
-                                .get_operations(self.selected_service.as_ref().expect("Service should be selected"))
+                                .get_operations(
+                                    self.selected_service
+                                        .as_ref()
+                                        .expect("Service should be selected"),
+                                )
                                 .expect("Operations should be fetched.");
                             self.operations = Some(operations);
                             self.selected_window = Window::Operations;
@@ -209,27 +248,7 @@ impl State {
                     &mut self.selected_operation,
                 ) {
                     ListSelectResult::Selected => {
-                        let mut request = jaeger::TracesRequest::new(
-                            self.selected_service.as_ref().expect("Service should be selected").clone(),
-                        );
-
-                        if let Some(to_select) = self.selected_operation.as_ref() {
-                            if !to_select.eq("*") {
-                                request.operation = Some(to_select.clone());
-                            }
-                        }
-
-                        let traces = jaeger.get_traces(&request);
-
-                        if let Ok(traces) = traces {
-                            self.traces = Some(traces);
-                            self.selected_window = Window::Traces;
-                            self.selected_trace = None;
-                            self.spans = None;
-                            self.selected_span = None;
-                        } else if let Err(e) = traces {
-                            panic!("Error getting traces: {:?}", e);
-                        }
+                        self.fetch_traces(jaeger);
                     }
                     ListSelectResult::Unselected => {
                         self.traces = None;
@@ -254,7 +273,13 @@ impl State {
                             .expect("Traces to be correctly fetched")
                             .data
                             .iter()
-                            .find(|t| t.to_string() == *self.selected_trace.as_ref().expect("Trace should be selected"))
+                            .find(|t| {
+                                t.to_string()
+                                    == *self
+                                        .selected_trace
+                                        .as_ref()
+                                        .expect("Trace should be selected")
+                            })
                             .expect("On trace select, trace should be found.");
 
                         let mut spans = trace.spans.clone();
@@ -370,6 +395,84 @@ impl State {
     fn set_debug_text(&mut self, text: String) {
         self.debug_text = text;
     }
+
+    fn fetch_traces(&mut self, jaeger: &Jaeger) {
+        let mut request = jaeger::TracesRequest::new(
+            self.selected_service
+                .as_ref()
+                .expect("Service should be selected")
+                .clone(),
+        );
+
+        if let Some(to_select) = self.selected_operation.as_ref() {
+            if !to_select.eq("*") {
+                request = request.operation(to_select.clone());
+            }
+        }
+
+        request = request.limit(self.traces_limit as i32);
+
+        if self.min_duration > 0 {
+            request = request.min_duration(self.min_duration);
+        }
+        if self.max_duration > 0 {
+            request = request.max_duration(self.max_duration);
+
+            // we need to add ANY min duration (not 0), if we define max
+            if self.min_duration == 0 {
+                request = request.min_duration(1);
+            }
+        }
+
+        let traces = jaeger.get_traces(&request);
+
+        if let Ok(traces) = traces {
+            self.traces = Some(traces);
+            self.selected_window = Window::Traces;
+            self.selected_trace = None;
+            self.spans = None;
+            self.selected_span = None;
+        } else if let Err(e) = traces {
+            panic!("Error getting traces: {:?}", e);
+        };
+    }
+
+    // <0:100> -> 10, <100:500> -> 50, <500:1000> -> 100, <1000:5000> -> 500, <5000:> -> 1000
+    fn handle_duration(&mut self, duration: u64, add: bool) -> u64 {
+        if add {
+            if duration < 100 {
+                return duration + 10;
+            }
+            if duration < 500 {
+                return duration + 50;
+            }
+            if duration < 1000 {
+                return duration + 100;
+            }
+            if duration < 5000 {
+                return duration + 500;
+            }
+
+            return duration + 1000;
+        }
+
+        if duration > 5000 {
+            return duration - 1000;
+        }
+        if duration > 1000 {
+            return duration - 500;
+        }
+        if duration > 500 {
+            return duration - 100;
+        }
+        if duration > 100 {
+            return duration - 50;
+        }
+        if duration > 10 {
+            return duration - 10;
+        }
+        0
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -452,6 +555,12 @@ pub enum Operation {
     Search,
     SearchInput(char),
     SearchEnter,
+    NextPage,
+    PreviousPage,
+    AddMinDuration,
+    AddMaxDuration,
+    SubMinDuration,
+    SubMaxDuration,
     ToggleDebug,
 }
 
@@ -498,6 +607,24 @@ pub fn handle_events(state: &State) -> io::Result<Operation> {
             }
             if is_keycode_pressed(key, KeyCode::Enter) {
                 return Ok(Operation::Select);
+            }
+            if is_keycode_pressed(key, KeyCode::PageUp) {
+                return Ok(Operation::NextPage);
+            }
+            if is_keycode_pressed(key, KeyCode::PageDown) {
+                return Ok(Operation::PreviousPage);
+            }
+            if is_char_pressed(key, '[') {
+                return Ok(Operation::SubMinDuration);
+            }
+            if is_char_pressed(key, ']') {
+                return Ok(Operation::AddMinDuration);
+            }
+            if is_char_pressed(key, '{') {
+                return Ok(Operation::SubMaxDuration);
+            }
+            if is_char_pressed(key, '}') {
+                return Ok(Operation::AddMaxDuration);
             }
         }
     }

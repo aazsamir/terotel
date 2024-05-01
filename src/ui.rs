@@ -1,9 +1,6 @@
 
 use ratatui::{prelude::*, widgets::*};
-use std::{
-    collections::HashMap,
-    rc::Rc,
-};
+use std::collections::HashMap;
 
 use crate::app::{State, Window};
 
@@ -23,12 +20,12 @@ pub fn ui_main(frame: &mut Frame, state: &State) {
         [
             Constraint::Length(1),
             Constraint::Min(0),
-            Constraint::Length(1),
+            Constraint::Length(2),
         ],
     )
     .split(frame.size());
-    ui_topbar(frame, &main_layout, state);
-    ui_statusbar(frame, &main_layout, state);
+    ui_topbar(frame, &main_layout[0], state);
+    ui_statusbar(frame, &main_layout[2], state);
 
     let inner_layout = Layout::new(
         Direction::Horizontal,
@@ -57,28 +54,35 @@ pub fn ui_main(frame: &mut Frame, state: &State) {
     ui_traces(frame, &inner_layout[2], state);
 }
 
-pub fn ui_topbar(frame: &mut Frame, layout: &Rc<[Rect]>, _state: &State) {
+pub fn ui_topbar(frame: &mut Frame, layout: &Rect, _state: &State) {
     let text = "Terotel - Terminal OTEL Viewer";
     let paragraph = Paragraph::new(text);
-    frame.render_widget(paragraph, layout[0]);
+    frame.render_widget(paragraph, *layout);
 }
 
-pub fn ui_statusbar(frame: &mut Frame, layout: &Rc<[Rect]>, state: &State) {
-    let mut text = if state.is_search_state {
+pub fn ui_statusbar(frame: &mut Frame, layout: &Rect, state: &State) {
+    let mut action_text = if state.is_search_state {
         let mut search_input = "(ESC?)> ".to_string();
         search_input.push_str(&state.search_input);
         search_input
     } else {
-        "q - Quit | hjkl - Move | e - Select | / - Search".to_string()
+        "q - Quit | hjkl - Move | e - Select | / - Search | PgUp - Page+ | PgDown - Page- | [] - Min Duration | {} - Max Duration".to_string()
     };
 
     if state.is_debug {
-        text.push_str(" | DEBUG: ");
-        text.push_str(&state.debug_text);
+        action_text.push_str(" | DEBUG: ");
+        action_text.push_str(&state.debug_text);
     }
 
-    let paragraph = Paragraph::new(text);
-    frame.render_widget(paragraph, layout[2]);
+    let state_text = format!("Page: {} | Duration: {}/{}", state.traces_page + 1, state.min_duration, state.max_duration);
+
+    let lines: Vec<Line> = vec![
+        Line::from(action_text),
+        Line::from(state_text),
+    ];
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, *layout);
 }
 
 pub fn ui_services(frame: &mut Frame, layout: &Rect, state: &State) {
@@ -205,12 +209,12 @@ pub fn ui_trace(frame: &mut Frame, state: &State) {
         [
             Constraint::Length(1),
             Constraint::Min(0),
-            Constraint::Length(1),
+            Constraint::Length(2),
         ],
     )
     .split(frame.size());
-    ui_topbar(frame, &main_layout, state);
-    ui_statusbar(frame, &main_layout, state);
+    ui_topbar(frame, &main_layout[0], state);
+    ui_statusbar(frame, &main_layout[2], state);
 
     let inner_layout = Layout::new(
         Direction::Horizontal,
