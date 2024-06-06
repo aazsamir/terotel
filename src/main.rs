@@ -13,6 +13,7 @@ pub mod jaeger;
 pub mod ui;
 
 fn main() -> io::Result<()> {
+    // grpc_main()?;
     let jaeger = Jaeger::new("http://localhost:16686");
     let mut state = app::State::new();
     // todo: there may be nothing to unwrap here
@@ -50,3 +51,9 @@ fn main() -> io::Result<()> {
     stdout().execute(LeaveAlternateScreen)?;
     Ok(())
 }
+
+
+// fn grpc_main() -> io::Result<()> {
+//     tonic::include_proto!("jaeger.api_v2");
+//     Ok(())
+// }
