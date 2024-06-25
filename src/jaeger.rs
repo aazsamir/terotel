@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -218,12 +219,32 @@ pub struct Lookback {
     pub unit: LookbackUnit,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LookbackUnit {
     Seconds,
     Minutes,
     Hours,
     Days,
+}
+
+impl ValueEnum for LookbackUnit {    
+    fn value_variants<'a>() -> &'a [Self] {
+        &[
+            LookbackUnit::Seconds,
+            LookbackUnit::Minutes,
+            LookbackUnit::Hours,
+            LookbackUnit::Days,
+        ]
+    }
+    
+    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
+        match self {
+            LookbackUnit::Seconds => Some(clap::builder::PossibleValue::new("s")),
+            LookbackUnit::Minutes => Some(clap::builder::PossibleValue::new("m")),
+            LookbackUnit::Hours => Some(clap::builder::PossibleValue::new("h")),
+            LookbackUnit::Days => Some(clap::builder::PossibleValue::new("d")),
+        }
+    }    
 }
 
 // brings to_string method

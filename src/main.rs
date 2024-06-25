@@ -3,17 +3,59 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
-use jaeger::Jaeger;
+use jaeger::{Jaeger, LookbackUnit};
 use ratatui::prelude::*;
 use std::io::{self, stdout, Error};
 use ui::ui;
+use clap::Parser;
 
 pub mod app;
 pub mod jaeger;
 pub mod ui;
+pub mod cli;
 
-fn main() -> io::Result<()> {
-    let jaeger = Jaeger::new("http://localhost:16686");
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+pub struct Args {
+    #[clap(short, long, default_value = "http://localhost:16686")]
+    url: String,
+    #[clap(short, long, default_value = "false")]
+    interactive: bool,
+    #[clap(short, long)]
+    service: Option<String>,
+    #[clap(short, long)]
+    operation: Option<String>,
+    #[clap(long)]
+    list_services: bool,
+    #[clap(long)]
+    list_operations: bool,
+    #[clap(short, long, default_value = "plain")]
+    format: String,
+    #[clap(long)]
+    lookback: Option<i32>,
+    #[clap(long)]
+    #[arg(value_enum)]
+    lookback_unit: Option<LookbackUnit>,
+    #[clap(long)]
+    limit: Option<i32>,
+    #[clap(long)]
+    min_duration: Option<u64>,
+    #[clap(long)]
+    max_duration: Option<u64>,
+}
+
+fn main() {
+    let args = Args::parse();
+    let jaeger = Jaeger::new(&args.url);
+
+    if args.interactive {
+        interactive_ui(jaeger).unwrap();
+    } else {
+        cli(jaeger, args).unwrap();
+    }
+}
+
+fn interactive_ui(jaeger: Jaeger) -> io::Result<()> {
     let mut state = app::State::new();
     // todo: there may be nothing to unwrap here
     let services = jaeger.get_services().unwrap();
@@ -48,5 +90,11 @@ fn main() -> io::Result<()> {
 
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
+    Ok(())
+}
+
+fn cli(jaeger: Jaeger, args: Args) -> io::Result<()> {
+    cli::CliHandler::new(jaeger).handle(args);
+
     Ok(())
 }
