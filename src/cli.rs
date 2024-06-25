@@ -3,8 +3,11 @@ use crate::{
     Args,
 };
 
-pub struct CliHandler {
-    jaeger: Jaeger,
+pub struct CliHandler<T>
+where
+    T: Jaeger,
+{
+    jaeger: T,
 }
 
 enum CliOperation {
@@ -31,12 +34,41 @@ impl CliFormat {
     }
 }
 
-impl CliHandler {
-    pub fn new(jaeger: Jaeger) -> CliHandler {
+impl<T> CliHandler<T>
+where
+    T: Jaeger,
+{
+    pub fn new(jaeger: T) -> CliHandler<T> {
         CliHandler { jaeger }
     }
 
-    pub fn handle(self, args: Args) {
+    pub fn display(self, data: Result<Vec<String>, String>, formatter: &Box<dyn CliFormatter>) {
+        let output = formatter.format(data);
+        println!("{}", output);
+    }
+
+    pub fn display_traces(
+        self,
+        data: Result<Vec<Trace>, String>,
+        formatter: &Box<dyn CliFormatter>,
+    ) {
+        let output = formatter.format_traces(data);
+        println!("{}", output);
+    }
+}
+
+pub trait CliHandlerrer<T>
+where
+    T: Jaeger,
+{
+    fn handle(self, args: Args);
+}
+
+impl<T> CliHandlerrer<T> for CliHandler<T>
+where
+    T: Jaeger,
+{
+    fn handle(self, args: Args) {
         let operation = if args.list_operations {
             CliOperation::ListOperations
         } else if args.list_services {
@@ -104,8 +136,8 @@ impl CliHandler {
                     }
 
                     let traces = self.jaeger.get_traces(&request).unwrap();
-                    
-                    CliHandler::display_traces(Ok(traces.data), &formatter);
+
+                    self.display_traces(Ok(traces.data), &formatter);
 
                     return;
                 } else {
@@ -117,24 +149,14 @@ impl CliHandler {
         }
 
         if let Some(error) = error {
-            CliHandler::display(Err(error.to_string()), &formatter);
+            self.display(Err(error.to_string()), &formatter);
         } else {
-            CliHandler::display(Ok(data), &formatter);
+            self.display(Ok(data), &formatter);
         }
-    }
-
-    fn display(data: Result<Vec<String>, String>, formatter: &Box<dyn CliFormatter>) {
-        let output = formatter.format(data);
-        println!("{}", output);
-    }
-
-    fn display_traces(data: Result<Vec<Trace>, String>, formatter: &Box<dyn CliFormatter>) {
-        let output = formatter.format_traces(data);
-        println!("{}", output);
     }
 }
 
-trait CliFormatter {
+pub trait CliFormatter {
     fn format(&self, data: Result<Vec<String>, String>) -> String;
     fn format_traces(&self, data: Result<Vec<Trace>, String>) -> String;
 }
@@ -169,12 +191,20 @@ impl PlainFormatter {
             line.push_str(&format!("\tOperation: {}\n", s.operation_name));
             line.push_str(&format!("\tStart Time: {}\n", s.start_time));
             line.push_str(&format!("\tDuration: {}\n", s.duration));
-            line.push_str(&format!("\tTags:\n{}\n", s.tags.iter().map(|t| format!("\t\t{}\n", t.value.to_string())).collect::<Vec<String>>().join("")));
+            line.push_str(&format!(
+                "\tTags:\n{}\n",
+                s.tags
+                    .iter()
+                    .map(|t| format!("\t\t{}\n", t.value.to_string()))
+                    .collect::<Vec<String>>()
+                    .join("")
+            ));
         });
 
         line
     }
 }
+
 impl CliFormatter for PlainFormatter {
     fn format(&self, data: Result<Vec<String>, String>) -> String {
         if let Ok(data) = data {
@@ -194,5 +224,120 @@ impl CliFormatter for PlainFormatter {
         } else {
             return data.unwrap_err();
         }
+    }
+}
+
+// tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::jaeger::{Jaeger, Operations, Services, Traces, TracesRequest, Trace}; use jaeger::LookbackUnit;
+
+    pub struct MockJaeger;
+    impl Jaeger for MockJaeger {
+        fn get_services(&self) -> Result<Services, reqwest::Error> {
+            Ok(Services {
+                data: vec!["service1".to_string(), "service2".to_string()],
+                total: 2,
+                limit: 0,
+                offset: 0,
+            })
+        }
+
+        fn get_operations(&self, _service: &str) -> Result<Operations, reqwest::Error> {
+            Ok(Operations {
+                data: vec!["operation1".to_string(), "operation2".to_string()],
+                total: 2,
+                limit: 0,
+                offset: 0,
+            })
+        }
+
+        fn get_traces(&self, _request: &TracesRequest) -> Result<Traces, reqwest::Error> {
+            Ok(Traces {
+                data: vec![Trace::default(), Trace::default()],
+                total: 2,
+            })
+        }
+
+        fn get_trace(&self, _trace_id: &str) -> Result<Trace, reqwest::Error> {
+            Ok(Trace::default())
+        }
+    }
+
+    #[test]
+    fn test_cli_handler_handle_list_operations() {
+        let jaeger = MockJaeger;
+        let handler = CliHandler::new(jaeger);
+        let args = Args {
+            list_operations: true,
+            list_services: false,
+            service: Some("service1".to_string()),
+            operation: None,
+            format: "json".to_string(),
+            lookback: None,
+            lookback_unit: None,
+            limit: None,
+            min_duration: None,
+            max_duration: None,
+            url: "http://localhost:16686".to_string(),
+        };
+        handler.handle(args);
+    }
+
+    #[test]
+    fn test_cli_handler_handle_list_services() {
+        let jaeger = MockJaeger;
+        let handler = CliHandler::new(jaeger);
+        let args = Args {
+            list_operations: false,
+            list_services: true,
+            service: None,
+            operation: None,
+            format: "json".to_string(),
+            lookback: None,
+            lookback_unit: None,
+            limit: None,
+            min_duration: None,
+            max_duration: None,
+            url: "http://localhost:16686".to_string(),
+        };
+        handler.handle(args);
+    }
+
+    #[test]
+    fn test_cli_handler_handle_get_traces() {
+        let jaeger = MockJaeger;
+        let handler = CliHandler::new(jaeger);
+        let args = Args {
+            list_operations: false,
+            list_services: false,
+            service: Some("service1".to_string()),
+            operation: Some("operation1".to_string()),
+            format: "json".to_string(),
+            lookback: Some(1),
+            lookback_unit: Some(LookbackUnit::Minutes),
+            limit: Some(10),
+            min_duration: Some(1),
+            max_duration: Some(100),
+            url: "http://localhost:16686".to_string(),
+        };
+        handler.handle(args);
+    }
+
+    #[test]
+    fn test_cli_formatter_json_format() {
+        let formatter = JsonFormatter;
+        let data = Ok(vec!["service1".to_string(), "service2".to_string()]);
+        let output = formatter.format(data);
+        assert_eq!(output, "[\"service1\",\"service2\"]");
+    }
+
+    #[test]
+    fn test_cli_formatter_plain_format() {
+        let formatter = PlainFormatter;
+        let data = Ok(vec!["service1".to_string(), "service2".to_string()]);
+        let output = formatter.format(data);
+        assert_eq!(output, "service1\nservice2");
     }
 }
