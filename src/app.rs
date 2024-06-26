@@ -73,7 +73,7 @@ impl State {
         }
     }
 
-    pub fn handle_operation(mut self, operation: &Operation, jaeger: &Jaeger) -> Self {
+    pub fn handle_operation(mut self, operation: &Operation, jaeger: &dyn Jaeger) -> Self {
         if let Operation::Nothing = operation {
             ()
         } else {
@@ -202,7 +202,7 @@ impl State {
         }
     }
 
-    pub fn handle_select(&mut self, jaeger: &Jaeger) {
+    pub fn handle_select(&mut self, jaeger: &dyn Jaeger) {
         match self.selected_window {
             Window::Services => {
                 if let Some(services) = self.services.as_mut() {
@@ -396,7 +396,7 @@ impl State {
         self.debug_text = text;
     }
 
-    fn fetch_traces(&mut self, jaeger: &Jaeger) {
+    fn fetch_traces(&mut self, jaeger: &dyn Jaeger) {
         let mut request = jaeger::TracesRequest::new(
             self.selected_service
                 .as_ref()

@@ -15,6 +15,8 @@ class App
 {
     public function run(): void
     {
+        $url = $_ENV['JAEGER_AGENT_HOST'] ?? '127.0.0.1';
+        
         $config = new Config(
             [
                 'sampler' => [
@@ -23,7 +25,7 @@ class App
                 ],
                 'logging' => true,
                 'local_agent' => [
-                    'reporting_host' => '127.0.0.1',
+                    'reporting_host' => $url,
                     'reporting_port' => '6831',
                 ],
             ],
@@ -77,3 +79,5 @@ class App
 
 $app = new App();
 $app->run();
+
+exit(0);

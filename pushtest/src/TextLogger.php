@@ -56,6 +56,10 @@ class TextLogger implements LoggerInterface
 
     private function toText(string|Stringable $message, array $context = []): string
     {
-        return (string) $message . ' ' . json_encode($context);
+        $message = (string) $message . ' ' . json_encode($context);
+
+        echo $message . PHP_EOL;
+
+        return $message;
     }
 }

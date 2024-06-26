@@ -1,0 +1,17 @@
+{
+    "name": "samir/jaeger-mock",
+    "autoload": {
+        "psr-4": {
+            "Samir\\JaegerMock\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "AZSamir",
+            "email": "sutikkukun@gmail.com"
+        }
+    ],
+    "require-dev": {
+        "symfony/var-dumper": "^7.1"
+    }
+}

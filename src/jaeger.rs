@@ -23,7 +23,7 @@ pub struct Operations {
     // pub errors: Errors,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Traces {
     pub data: Vec<Trace>,
     pub total: i32,
@@ -32,7 +32,7 @@ pub struct Traces {
     // pub errors: Errors,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Trace {
     #[serde(rename = "traceID")]
     pub trace_id: String,
@@ -73,7 +73,7 @@ impl Display for Trace {
 
         // add span count
         s = format!("{}|{} spans", s, self.spans.len());
-        
+
         write!(f, "{}", s)
     }
 }
@@ -103,10 +103,12 @@ impl Display for Span {
     ///
     /// `{operation_name}|{duration}ms|{span_id}`
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = format!("{}|{}ms|{}", self.operation_name, self.duration, self.span_id);
+        let s = format!(
+            "{}|{}ms|{}",
+            self.operation_name, self.duration, self.span_id
+        );
         write!(f, "{}", s)
     }
-
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -218,7 +220,7 @@ pub struct Lookback {
     pub unit: LookbackUnit,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LookbackUnit {
     Seconds,
     Minutes,
@@ -238,23 +240,32 @@ impl Display for LookbackUnit {
     }
 }
 
-pub struct Jaeger {
+pub struct JaegerService {
     pub host: String,
 }
 
-impl Jaeger {
-    pub fn new(host: &str) -> Jaeger {
-        Jaeger {
+impl JaegerService {
+    pub fn new(host: &str) -> JaegerService {
+        JaegerService {
             host: host.to_string(),
         }
     }
+}
 
-    pub fn get_services(&self) -> Result<Services, reqwest::Error> {
+pub trait Jaeger {
+    fn get_operations(&self, service: &str) -> Result<Operations, reqwest::Error>;
+    fn get_services(&self) -> Result<Services, reqwest::Error>;
+    fn get_traces(&self, request: &TracesRequest) -> Result<Traces, reqwest::Error>;
+    fn get_trace(&self, trace_id: &str) -> Result<Trace, reqwest::Error>;
+}
+
+impl Jaeger for JaegerService {
+    fn get_services(&self) -> Result<Services, reqwest::Error> {
         let url = format!("{}/api/services", self.host);
         reqwest::blocking::get(url)?.json::<Services>()
     }
 
-    pub fn get_operations(&self, service: &str) -> Result<Operations, reqwest::Error> {
+    fn get_operations(&self, service: &str) -> Result<Operations, reqwest::Error> {
         let url = format!("{}/api/services/{}/operations", self.host, service);
         let mut res = reqwest::blocking::get(url)?.json::<Operations>();
         // add asterisk operation, to match them all
@@ -264,7 +275,7 @@ impl Jaeger {
         res
     }
 
-    pub fn get_traces(&self, request: &TracesRequest) -> Result<Traces, reqwest::Error> {
+    fn get_traces(&self, request: &TracesRequest) -> Result<Traces, reqwest::Error> {
         let mut url = format!("{}/api/traces?service={}", self.host, request.service);
 
         if let Some(operation) = request.operation.as_ref() {
@@ -294,11 +305,11 @@ impl Jaeger {
         if let Some(lookback) = &request.lookback {
             url = format!("{}&lookback={}{}", url, lookback.value, lookback.unit);
         }
-        
+
         reqwest::blocking::get(url)?.json::<Traces>()
     }
 
-    pub fn get_trace(&self, trace_id: &str) -> Result<Trace, reqwest::Error> {
+    fn get_trace(&self, trace_id: &str) -> Result<Trace, reqwest::Error> {
         let url = format!("{}/api/traces/{}", self.host, trace_id);
         reqwest::blocking::get(url)?.json::<Trace>()
     }
