@@ -3,8 +3,8 @@
 ## Easy run
 
 Prerequisites:
-- Docker
-- Docker compose
+- Docker [https://docs.docker.com/get-docker/]
+- Docker compose [https://docs.docker.com/compose/install/]
 
 ```bash
 docker compose up -d
@@ -14,9 +14,9 @@ docker compose up -d
 ## Run terotel as standalone app
 
 Prerequisites:
-- Docker
-- Docker compose
-- Cargo
+- Docker [https://docs.docker.com/get-docker/]
+- Docker compose [https://docs.docker.com/compose/install/]
+- Cargo [https://doc.rust-lang.org/cargo/getting-started/installation.html]
 
 ```bash
 docker compose up -d
@@ -26,9 +26,9 @@ cargo run --release
 ## Run without docker
 
 Prerequisites:
-- PHP8
-- Composer
-- Cargo
+- PHP8 [https://www.php.net/downloads]
+- Composer [https://getcomposer.org/download/]
+- Cargo [https://doc.rust-lang.org/cargo/getting-started/installation.html]
 
 ### Run Jaeger mock server
 ```bash
