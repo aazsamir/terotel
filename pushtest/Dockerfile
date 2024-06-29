@@ -2,6 +2,7 @@ FROM php:8.3
 
 WORKDIR /usr/src/pushtest
 COPY . .
+RUN apt-get update && apt-get install -y git
 
 # copy composer from composer:lts
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
