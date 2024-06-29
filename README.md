@@ -6,11 +6,16 @@ Prerequisites:
 - Docker [https://docs.docker.com/get-docker/]
 - Docker compose [https://docs.docker.com/compose/install/]
 
+On Linux
 ```bash
 docker compose up -d
 ./run-docker.sh
 ```
-
+On Windows
+```bash
+docker compose up -d
+./run-docker.bat
+```
 ## Run terotel as standalone app
 
 Prerequisites:
