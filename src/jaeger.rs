@@ -66,8 +66,16 @@ impl Display for Trace {
             s = format!("{}|{}ms", s, elapsed);
         }
         // look for first operation name
-        // TODO: get real first (by start_time) operation name
-        if let Some(span) = self.spans.first() {
+        
+        let mut first_span: Option<&Span> = None;
+
+        for span in &self.spans {
+            if first_span.is_none() || span.start_time < first_span.unwrap().start_time {
+                first_span = Some(span);
+            }
+        }
+
+        if let Some(span) = first_span {
             s = format!("{}|{}", s, span.operation_name);
         }
 
