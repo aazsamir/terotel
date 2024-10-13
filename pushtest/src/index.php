@@ -40,6 +40,7 @@ class App
         $scope = $tracer->startActiveSpan($this->getRandomString(10), []);
         {
             $span = $tracer->startActiveSpan('sub', []);
+            sleep(1);
             $span->close();
         }
         {
@@ -49,8 +50,10 @@ class App
                 sleep(3);
                 $span2->close();
             }
+            sleep(1);
             $span->close();
             $span = $tracer->startActiveSpan('sub', []);
+            sleep(1);
             $span->close();
         }
         {

@@ -23,7 +23,7 @@ pub fn ui_main(frame: &mut Frame, state: &State) {
             Constraint::Length(2),
         ],
     )
-    .split(frame.size());
+    .split(frame.area());
     ui_topbar(frame, &main_layout[0], state);
     ui_statusbar(frame, &main_layout[2], state);
 
@@ -212,18 +212,27 @@ pub fn ui_trace(frame: &mut Frame, state: &State) {
             Constraint::Length(2),
         ],
     )
-    .split(frame.size());
+    .split(frame.area());
     ui_topbar(frame, &main_layout[0], state);
     ui_statusbar(frame, &main_layout[2], state);
+
+    let content_layout = Layout::new(
+        Direction::Vertical,
+        [
+            Constraint::Percentage(50),
+            Constraint::Percentage(50),
+        ],
+    ).split(main_layout[1]);
 
     let inner_layout = Layout::new(
         Direction::Horizontal,
         [Constraint::Percentage(50), Constraint::Percentage(50)],
     )
-    .split(main_layout[1]);
+    .split(content_layout[0]);
 
     ui_spans(frame, &inner_layout[0], state);
     ui_span(frame, &inner_layout[1], state);
+    ui_diagram(frame, &content_layout[1], state);
 }
 
 pub fn ui_spans(frame: &mut Frame, layout: &Rect, state: &State) {
@@ -353,9 +362,67 @@ pub fn ui_span(frame: &mut Frame, layout: &Rect, state: &State) {
         ScrollbarState::new(paragraph_items_len).position(state.span_text_scroll as usize);
 
     frame.render_widget(paragraph, *layout);
-    let margin = &Margin {
+    let margin = Margin {
         horizontal: 0,
         vertical: 1,
     };
     frame.render_stateful_widget(scrollbar, layout.inner(margin), &mut scrollbar_state);
+}
+
+pub fn ui_diagram(frame: &mut Frame, layout: &Rect, state: &State) {
+    let block = Block::default().title("Diagram").borders(Borders::ALL);
+
+    if state.selected_trace.is_none() {
+        frame.render_widget(block, *layout);
+        return;
+    }
+
+    let selected_trace = state
+        .traces
+        .as_ref()
+        .unwrap()
+        .data
+        .iter()
+        .find(|t| t.to_string() == *state.selected_trace.as_ref().unwrap())
+        .unwrap();
+
+    let spans = selected_trace.spans.clone();
+    let mut min_starttime = i64::MAX;
+    let mut max_endtime = 0;
+    let spans_count = spans.len();
+    let mut counter = spans.len();
+
+    let mut data = vec![];
+
+    for span in spans {
+        let start_time = span.start_time;
+        let end_time = span.start_time + span.duration;
+
+        if start_time < min_starttime {
+            min_starttime = start_time;
+        }
+
+        if end_time > max_endtime {
+            max_endtime = end_time;
+        }
+
+        data.push(vec![(start_time as f64, counter as f64), (end_time as f64, counter as f64)]);
+        counter -= 1;
+    }
+
+    let datasets: Vec<Dataset> = data.iter().map(|d| {
+        Dataset::default()
+            .data(d)
+            .marker(symbols::Marker::Dot)
+            .style(Style::default().fg(Color::Yellow))
+            .graph_type(GraphType::Line)
+    }).collect();
+
+    let chart = Chart::new(datasets)
+        .block(block)
+        .style(Style::default().fg(Color::White))
+        .x_axis(Axis::default().title("X Axis").style(Style::default().fg(Color::Green)).bounds([min_starttime as f64, max_endtime as f64]))
+        .y_axis(Axis::default().title("Y Axis").style(Style::default().fg(Color::Red)).bounds([0.0, spans_count as f64]));
+
+    frame.render_widget(chart, *layout);
 }
