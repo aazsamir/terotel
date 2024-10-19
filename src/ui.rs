@@ -386,13 +386,17 @@ pub fn ui_diagram(frame: &mut Frame, layout: &Rect, state: &State) {
         .find(|t| t.to_string() == *state.selected_trace.as_ref().unwrap())
         .unwrap();
 
-    let spans = selected_trace.spans.clone();
+    let mut spans = selected_trace.spans.clone();
     let mut min_starttime = i64::MAX;
     let mut max_endtime = 0;
     let spans_count = spans.len();
     let mut counter = spans.len();
 
     let mut data = vec![];
+
+    spans.sort_by(|a, b| a.start_time.cmp(&b.start_time));
+
+    let mut labels = vec![];
 
     for span in spans {
         let start_time = span.start_time;
@@ -408,7 +412,12 @@ pub fn ui_diagram(frame: &mut Frame, layout: &Rect, state: &State) {
 
         data.push(vec![(start_time as f64, counter as f64), (end_time as f64, counter as f64)]);
         counter -= 1;
+
+        labels.push(format!("{}", span.operation_name));
     }
+    labels.push("".to_string());
+
+    labels.reverse();
 
     let datasets: Vec<Dataset> = data.iter().map(|d| {
         Dataset::default()
@@ -421,8 +430,8 @@ pub fn ui_diagram(frame: &mut Frame, layout: &Rect, state: &State) {
     let chart = Chart::new(datasets)
         .block(block)
         .style(Style::default().fg(Color::White))
-        .x_axis(Axis::default().title("X Axis").style(Style::default().fg(Color::Green)).bounds([min_starttime as f64, max_endtime as f64]))
-        .y_axis(Axis::default().title("Y Axis").style(Style::default().fg(Color::Red)).bounds([0.0, spans_count as f64]));
+        .x_axis(Axis::default().style(Style::default().fg(Color::Green)).bounds([min_starttime as f64, max_endtime as f64]))
+        .y_axis(Axis::default().style(Style::default().fg(Color::Red)).bounds([0.0, spans_count as f64]).labels(labels));
 
     frame.render_widget(chart, *layout);
 }
