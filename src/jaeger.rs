@@ -1,7 +1,12 @@
-use std::fmt::Display;
+use std::{error::Error, fmt::Display};
 
+use anyhow::{Error, Ok, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+
+pub mod query {
+    tonic::include_proto!("jaeger.api_v2");
+}
 
 // type Errors = Option<Vec<String>>;
 
@@ -66,7 +71,7 @@ impl Display for Trace {
             s = format!("{}|{}ms", s, elapsed);
         }
         // look for first operation name
-        
+
         let mut first_span: Option<&Span> = None;
 
         for span in &self.spans {
@@ -261,29 +266,30 @@ impl JaegerService {
 }
 
 pub trait Jaeger {
-    fn get_operations(&self, service: &str) -> Result<Operations, reqwest::Error>;
-    fn get_services(&self) -> Result<Services, reqwest::Error>;
-    fn get_traces(&self, request: &TracesRequest) -> Result<Traces, reqwest::Error>;
-    fn get_trace(&self, trace_id: &str) -> Result<Trace, reqwest::Error>;
+    async fn get_operations(&mut self, service: &str) -> Result<Operations>;
+    async fn get_services(&mut self) -> Result<Services>;
+    async fn get_traces(&mut self, request: &TracesRequest) -> Result<Traces>;
+    async fn get_trace(&mut self, trace_id: &str) -> Result<Trace>;
 }
 
 impl Jaeger for JaegerService {
-    fn get_services(&self) -> Result<Services, reqwest::Error> {
+    async fn get_services(&mut self) -> Result<Services> {
         let url = format!("{}/api/services", self.host);
-        reqwest::blocking::get(url)?.json::<Services>()
+        let response = reqwest::blocking::get(url)?.json::<Services>()?;
+
+        Ok(response)
     }
 
-    fn get_operations(&self, service: &str) -> Result<Operations, reqwest::Error> {
+    async fn get_operations(&mut self, service: &str) -> Result<Operations> {
         let url = format!("{}/api/services/{}/operations", self.host, service);
-        let mut res = reqwest::blocking::get(url)?.json::<Operations>();
+        let mut res = reqwest::blocking::get(url)?.json::<Operations>()?;
         // add asterisk operation, to match them all
-        if let Ok(res) = &mut res {
-            res.data.insert(0, "*".to_string());
-        }
-        res
+        res.data.insert(0, "*".to_string());
+
+        Ok(res)
     }
 
-    fn get_traces(&self, request: &TracesRequest) -> Result<Traces, reqwest::Error> {
+    async fn get_traces(&mut self, request: &TracesRequest) -> Result<Traces> {
         let mut url = format!("{}/api/traces?service={}", self.host, request.service);
 
         if let Some(operation) = request.operation.as_ref() {
@@ -314,11 +320,128 @@ impl Jaeger for JaegerService {
             url = format!("{}&lookback={}{}", url, lookback.value, lookback.unit);
         }
 
-        reqwest::blocking::get(url)?.json::<Traces>()
+        let response = reqwest::blocking::get(url)?.json::<Traces>()?;
+
+        Ok(response)
     }
 
-    fn get_trace(&self, trace_id: &str) -> Result<Trace, reqwest::Error> {
+    async fn get_trace(&mut self, trace_id: &str) -> Result<Trace> {
         let url = format!("{}/api/traces/{}", self.host, trace_id);
-        reqwest::blocking::get(url)?.json::<Trace>()
+        let response = reqwest::blocking::get(url)?.json::<Trace>()?;
+
+        Ok(response)
     }
+}
+
+pub struct ProtoService {
+    pub client: query::query_service_client::QueryServiceClient<tonic::transport::Channel>,
+}
+
+
+impl Jaeger for ProtoService {
+    async fn get_services(&mut self) -> Result<Services> {
+        let request = query::GetServicesRequest {};
+        let response = self.client.get_services(request).await?;
+        let services = response.into_inner();
+        let data = services.services.into_iter().collect();
+        let total = 0;
+        let limit = 0;
+        let offset = 0;
+
+        Ok(Services {
+            data,
+            total,
+            limit,
+            offset,
+        })
+    }
+
+    async fn get_operations(&mut self, service: &str) -> Result<Operations> {
+        let request = query::GetOperationsRequest {
+            service: service.to_string(),
+            span_kind: "".to_string(),
+        };
+        let response = self.client.get_operations(request).await?;
+        let operations = response.into_inner();
+        let data = operations.operations.into_iter().map(|op| op.name).collect();
+        let total = 0;
+        let limit = 0;
+        let offset = 0;
+
+        Ok(Operations {
+            data,
+            total,
+            limit,
+            offset,
+        })
+    }
+
+    async fn get_traces(&mut self, request: &TracesRequest) -> Result<Traces> {
+        let proto_request = query::FindTracesRequest {
+            query: None,
+        };
+
+        let response = self.client.find_traces(request).await?;
+        let mut traces = response.into_inner();
+        let mut data = vec![];
+
+        while let Some(trace) = traces.message().await? {
+            let trace_id = trace.trace_id;
+            let spans = trace.spans.into_iter().map(|span| {
+                let trace_id = span.trace_id;
+                let span_id = span.span_id;
+                let flags = span.flags;
+                let operation_name = span.operation_name;
+                let references = span.references.into_iter().map(|ref_| {
+                    let ref_type = match ref_.ref_type {
+                        query::SpanRefType::ChildOf => RefType::ChildOf,
+                        query::SpanRefType::FollowsFrom => RefType::FollowsFrom,
+                    };
+                    let trace_id = ref_.
+                }).collect();
+                let start_time = span.start_time;
+                let duration = span.duration;
+                let tags = span.tags.into_iter().map(|tag| {
+                    let key = tag.key;
+                    let tag_type = tag.type_;
+                    let value = tag.value;
+                    Tag {
+                        key,
+                        tag_type,
+                        value,
+                    }
+                }).collect();
+                let process_id = span.process_id;
+                Span {
+                    trace_id,
+                    span_id,
+                    flags,
+                    operation_name,
+                    references,
+                    start_time,
+                    duration,
+                    tags,
+                    process_id,
+                }
+            }).collect();
+            let processes = trace.processes.into_iter().map(|(key, value)| {
+                (key, value)
+            }).collect();
+            data.push(
+                Trace {
+                    trace_id,
+                    spans,
+                    processes,
+                }                
+            );
+        }
+        let total = 0;
+        
+        Ok(Traces {
+            data,
+            total,
+        })
+    }
+
+    async fn get_trace(&mut self, trace_id: &str) -> Result<Trace> {}
 }

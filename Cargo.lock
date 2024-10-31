@@ -1560,9 +1560,11 @@ dependencies = [
 name = "terotel"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "clap",
  "crossterm",
  "prost",
+ "prost-types",
  "rand",
  "ratatui",
  "reqwest",
