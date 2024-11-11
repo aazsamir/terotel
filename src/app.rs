@@ -73,7 +73,7 @@ impl State {
         }
     }
 
-    pub fn handle_operation(mut self, operation: &Operation, jaeger: &dyn Jaeger) -> Self {
+    pub async fn handle_operation(mut self, operation: &Operation, jaeger: &mut dyn Jaeger) -> Self {
         if let Operation::Nothing = operation {
             ()
         } else {
@@ -86,7 +86,7 @@ impl State {
             Operation::MoveUp => self.handle_move_vertical(false),
             Operation::MoveRight => self.handle_move_horizontal(true),
             Operation::MoveLeft => self.handle_move_horizontal(false),
-            Operation::Select => self.handle_select(jaeger),
+            Operation::Select => self.handle_select(jaeger).await,
             Operation::Nothing => {}
             Operation::Search => self.handle_search(),
             Operation::SearchInput(c) => self.handle_search_input(c),
@@ -95,14 +95,14 @@ impl State {
             Operation::NextPage => {
                 if let Window::Traces = self.selected_window {
                     self.traces_page += 1;
-                    self.fetch_traces(jaeger);
+                    self.fetch_traces(jaeger).await;
                 }
             }
             Operation::PreviousPage => {
                 if let Window::Traces = self.selected_window {
                     if self.traces_page > 0 {
                         self.traces_page -= 1;
-                        self.fetch_traces(jaeger);
+                        self.fetch_traces(jaeger).await;
                     }
                 }
             }
@@ -202,7 +202,7 @@ impl State {
         }
     }
 
-    pub fn handle_select(&mut self, jaeger: &dyn Jaeger) {
+    pub async fn handle_select(&mut self, jaeger: &mut dyn Jaeger) {
         match self.selected_window {
             Window::Services => {
                 if let Some(services) = self.services.as_mut() {
@@ -217,7 +217,7 @@ impl State {
                                     self.selected_service
                                         .as_ref()
                                         .expect("Service should be selected"),
-                                )
+                                ).await
                                 .expect("Operations should be fetched.");
                             self.operations = Some(operations);
                             self.selected_window = Window::Operations;
@@ -248,7 +248,7 @@ impl State {
                     &mut self.selected_operation,
                 ) {
                     ListSelectResult::Selected => {
-                        self.fetch_traces(jaeger);
+                        self.fetch_traces(jaeger).await;
                     }
                     ListSelectResult::Unselected => {
                         self.traces = None;
@@ -396,7 +396,7 @@ impl State {
         self.debug_text = text;
     }
 
-    fn fetch_traces(&mut self, jaeger: &dyn Jaeger) {
+    async fn fetch_traces(&mut self, jaeger: &mut dyn Jaeger) {
         let mut request = jaeger::TracesRequest::new(
             self.selected_service
                 .as_ref()
@@ -424,7 +424,7 @@ impl State {
             }
         }
 
-        let traces = jaeger.get_traces(&request);
+        let traces = jaeger.get_traces(&request).await;
 
         if let Ok(traces) = traces {
             self.traces = Some(traces);

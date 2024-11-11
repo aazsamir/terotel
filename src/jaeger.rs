@@ -1,6 +1,9 @@
-use std::{error::Error, fmt::Display};
+use core::str;
+use std::{collections::HashMap, fmt::Display};
 
 use anyhow::{Error, Ok, Result};
+use prost_types::{Duration, Timestamp};
+use query::TraceQueryParameters;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -265,6 +268,7 @@ impl JaegerService {
     }
 }
 
+#[async_trait::async_trait]
 pub trait Jaeger {
     async fn get_operations(&mut self, service: &str) -> Result<Operations>;
     async fn get_services(&mut self) -> Result<Services>;
@@ -272,17 +276,18 @@ pub trait Jaeger {
     async fn get_trace(&mut self, trace_id: &str) -> Result<Trace>;
 }
 
+#[async_trait::async_trait]
 impl Jaeger for JaegerService {
     async fn get_services(&mut self) -> Result<Services> {
         let url = format!("{}/api/services", self.host);
-        let response = reqwest::blocking::get(url)?.json::<Services>()?;
+        let response = reqwest::get(url).await?.json::<Services>().await?;
 
         Ok(response)
     }
 
     async fn get_operations(&mut self, service: &str) -> Result<Operations> {
         let url = format!("{}/api/services/{}/operations", self.host, service);
-        let mut res = reqwest::blocking::get(url)?.json::<Operations>()?;
+        let mut res = reqwest::get(url).await?.json::<Operations>().await?;
         // add asterisk operation, to match them all
         res.data.insert(0, "*".to_string());
 
@@ -320,14 +325,14 @@ impl Jaeger for JaegerService {
             url = format!("{}&lookback={}{}", url, lookback.value, lookback.unit);
         }
 
-        let response = reqwest::blocking::get(url)?.json::<Traces>()?;
+        let response = reqwest::get(url).await?.json::<Traces>().await?;
 
         Ok(response)
     }
 
     async fn get_trace(&mut self, trace_id: &str) -> Result<Trace> {
         let url = format!("{}/api/traces/{}", self.host, trace_id);
-        let response = reqwest::blocking::get(url)?.json::<Trace>()?;
+        let response = reqwest::get(url).await?.json::<Trace>().await?;
 
         Ok(response)
     }
@@ -337,7 +342,15 @@ pub struct ProtoService {
     pub client: query::query_service_client::QueryServiceClient<tonic::transport::Channel>,
 }
 
+impl ProtoService {
+    pub async fn new(url: &str) -> Result<ProtoService> {        
+        let client = query::query_service_client::QueryServiceClient::connect(url.to_string()).await?;
 
+        Ok(ProtoService { client })
+    }
+}
+
+#[async_trait::async_trait]
 impl Jaeger for ProtoService {
     async fn get_services(&mut self) -> Result<Services> {
         let request = query::GetServicesRequest {};
@@ -363,7 +376,11 @@ impl Jaeger for ProtoService {
         };
         let response = self.client.get_operations(request).await?;
         let operations = response.into_inner();
-        let data = operations.operations.into_iter().map(|op| op.name).collect();
+        let data = operations
+            .operations
+            .into_iter()
+            .map(|op| op.name)
+            .collect();
         let total = 0;
         let limit = 0;
         let offset = 0;
@@ -378,70 +395,97 @@ impl Jaeger for ProtoService {
 
     async fn get_traces(&mut self, request: &TracesRequest) -> Result<Traces> {
         let proto_request = query::FindTracesRequest {
-            query: None,
+            query: Some(
+                TraceQueryParameters {
+                    duration_max: if let Some(max_duration) = request.max_duration{
+                        Some(Duration {seconds: max_duration as i64, nanos: 0})
+                    } else {
+                        None
+                    },
+                    duration_min: if let Some(min_duration) = request.min_duration{
+                        Some(Duration {seconds: min_duration as i64, nanos: 0})
+                    } else {
+                        None
+                    },
+                    operation_name: request.operation.clone().unwrap_or_default(),
+                    service_name: request.service.clone(),
+                    start_time_min: if let Some(start) = request.start{
+                        Some(Timestamp {seconds: start, nanos: 0})
+                    } else {
+                        None
+                    },
+                    start_time_max: if let Some(end) = request.end{
+                        Some(Timestamp {seconds: end, nanos: 0})
+                    } else {
+                        None
+                    },
+                    tags: HashMap::new(),
+                    search_depth: 20,
+                }
+            )
         };
 
-        let response = self.client.find_traces(request).await?;
-        let mut traces = response.into_inner();
-        let mut data = vec![];
+        let response = self.client.find_traces(proto_request).await?;
+        // let mut data = vec![];
+        let mut data = HashMap::new();
+        let mut response = response.into_inner();
 
-        while let Some(trace) = traces.message().await? {
-            let trace_id = trace.trace_id;
-            let spans = trace.spans.into_iter().map(|span| {
-                let trace_id = span.trace_id;
-                let span_id = span.span_id;
-                let flags = span.flags;
-                let operation_name = span.operation_name;
-                let references = span.references.into_iter().map(|ref_| {
-                    let ref_type = match ref_.ref_type {
-                        query::SpanRefType::ChildOf => RefType::ChildOf,
-                        query::SpanRefType::FollowsFrom => RefType::FollowsFrom,
-                    };
-                    let trace_id = ref_.
-                }).collect();
-                let start_time = span.start_time;
-                let duration = span.duration;
-                let tags = span.tags.into_iter().map(|tag| {
-                    let key = tag.key;
-                    let tag_type = tag.type_;
-                    let value = tag.value;
-                    Tag {
-                        key,
-                        tag_type,
-                        value,
-                    }
-                }).collect();
-                let process_id = span.process_id;
-                Span {
-                    trace_id,
-                    span_id,
-                    flags,
-                    operation_name,
-                    references,
-                    start_time,
-                    duration,
-                    tags,
-                    process_id,
+        while let Some(spans_chunk) = response.message().await? {
+            for span in &spans_chunk.spans {
+                let trace_id = vec_u8_to_hex_string(span.trace_id.clone());
+                // let trace_id = vec_u8_to_hex_string(span.span_id);
+                // data.push(Trace {
+                //     trace_id: trace_id.to_string(),
+                //     spans: vec![],
+                //     processes: Map::new(),
+                // });
+                let mut spans = vec![];
+                for span in spans_chunk.spans.iter() {
+                    let span_trace_id = vec_u8_to_hex_string(span.trace_id.clone());
+                    let span_id = vec_u8_to_hex_string(span.span_id.clone());
+                    let operation_name = span.operation_name.clone();
+                    let start_time = span.start_time;
+                    let duration = span.duration;
+                    let process_id = span.process_id.clone();
+                    let mut tags = vec![];
+
+                    spans.push(
+                        Span {
+                            trace_id: span_trace_id.clone(),
+                            span_id: span_id.clone(),
+                            flags: None,
+                            operation_name,
+                            references: None,
+                            start_time: 0,
+                            duration: 0,
+                            tags,
+                            process_id,
+                        }
+                    );
                 }
-            }).collect();
-            let processes = trace.processes.into_iter().map(|(key, value)| {
-                (key, value)
-            }).collect();
-            data.push(
-                Trace {
-                    trace_id,
+
+                data.insert(trace_id.clone(), Trace {
+                    trace_id: trace_id.to_string(),
                     spans,
-                    processes,
-                }                
-            );
+                    processes: Map::new(),
+                });
+            }
         }
-        let total = 0;
-        
-        Ok(Traces {
-            data,
-            total,
-        })
+
+        let data = data.into_iter().map(|(_, v)| v).collect();
+
+        Ok(Traces { data, total: 0 })
     }
 
-    async fn get_trace(&mut self, trace_id: &str) -> Result<Trace> {}
+    async fn get_trace(&mut self, _trace_id: &str) -> Result<Trace> {
+        todo!()
+    }
+}
+
+fn vec_u8_to_hex_string(vec: Vec<u8>) -> String {
+    let mut s = String::new();
+    for byte in vec {
+        s.push_str(&format!("{:02x}", byte));
+    }
+    s
 }
